@@ -452,14 +452,11 @@ def load_manifest(path: Pathlike, manifest_cls: Optional[Type] = None) -> Manife
     from lhotse import CutSet, FeatureSet, RecordingSet, SupervisionSet
 
     # Determine the serialization format and read the raw data.
-    if extension_contains(".jsonl", path):
-        raw_data = load_jsonl(path)
-        if manifest_cls is None:
-            # Note: for now, we need to load the whole JSONL rather than read it in
-            # a streaming way, because we have no way to know which type of manifest
-            # we should decode later; since we're consuming the underlying generator
-            # each time we try, not materializing the list first could lead to data loss
-            raw_data = list(raw_data)
+    # JSONL is read in a streaming way, anew for each attempted manifest type,
+    # so that the raw dicts never need to be held in memory all at once.
+    is_jsonl = extension_contains(".jsonl", path)
+    if is_jsonl:
+        raw_data = None
     elif extension_contains(".json", path):
         raw_data = load_json(path)
     elif extension_contains(".yaml", path):
@@ -476,13 +473,20 @@ def load_manifest(path: Pathlike, manifest_cls: Optional[Type] = None) -> Manife
         candidates = [RecordingSet, SupervisionSet, FeatureSet, CutSet]
     for manifest_type in candidates:
         try:
-            data_set = manifest_type.from_dicts(raw_data)
+            data_set = manifest_type.from_dicts(
+                load_jsonl(path) if is_jsonl else raw_data
+            )
             if len(data_set) == 0:
                 raise RuntimeError()
             break
         except Exception:
             pass
     if data_set is None:
+        if is_jsonl and manifest_cls is None:
+            # When guessing the type, a missing or malformed JSONL file is reported
+            # as such: scan the whole file to surface the reading error, if any.
+            for _ in load_jsonl(path):
+                pass
         raise ValueError(f"Unknown type of manifest: {path}")
     return data_set
 

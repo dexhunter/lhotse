@@ -1,0 +1,64 @@
+{
+  "targets": [
+    {
+      "upstream_repo": "https://github.com/lhotse-speech/lhotse",
+      "head_sha": "3a4f0971f4f05c3d012e36b85097ddb5cb235c33",
+      "file": "lhotse/indexing.py",
+      "function": "create_jsonl_index",
+      "native_test_cmd": "python -m pytest -q test/test_indexing.py::test_create_jsonl_index test/test_indexing.py::test_create_jsonl_index_output_path test/test_indexing.py::test_indexed_jsonl_reader",
+      "tests_pass_on_baseline": true,
+      "metric_kind": "peak_memory_bytes",
+      "baseline_value": 11231304,
+      "baseline_noise_pct": 0.0,
+      "metric_benchmark": "python osspr-intake/harness/create_jsonl_index/bench.py",
+      "labeled_data": null,
+      "why_hot": "Building a cut-manifest index appends every line offset as a Python int, then copies that list into a uint64 array in _write_index. On 200000 JSONL records the traced peak is 11231304 bytes and is the live list of ints; the .idx file itself is only the compact uint64 vector plus a size sentinel. Writing the offsets straight into a pre-sized uint64 buffer would leave those bytes unchanged and drop the Python-int list from the peak.",
+      "overlap_check": "Open upstream PRs as of 2026-11-10 do not touch lhotse/indexing.py or create_jsonl_index. Checked the open PR file list, including 1653, 1652, 1628, 1572, 1516, 1507, 1489, 1263, 1204, and 1020. The earlier osspr-intake/lhotse-20261105 cards are runtime measurements of other functions."
+    },
+    {
+      "upstream_repo": "https://github.com/lhotse-speech/lhotse",
+      "head_sha": "3a4f0971f4f05c3d012e36b85097ddb5cb235c33",
+      "file": "lhotse/cut/mono.py",
+      "function": "MonoCut.merge_supervisions",
+      "native_test_cmd": "python -m pytest -q test/cut/test_cut_merge_supervisions.py::test_mono_cut_merge_supervisions test/cut/test_cut_merge_supervisions.py::test_mono_cut_merge_supervisions_alignments test/cut/test_cut_merge_supervisions.py::test_mono_cut_merge_supervisions_identity test/cut/test_cut_merge_supervisions.py::test_mono_cut_merge_supervisions_no_supervisions test/cut/test_cut_merge_supervisions.py::test_mono_cut_merge_supervisions_empty_fields test/cut/test_cut_merge_supervisions.py::test_mono_cut_merge_supervisions_custom_merge_fn",
+      "tests_pass_on_baseline": true,
+      "metric_kind": "allocations",
+      "baseline_value": 2568,
+      "baseline_noise_pct": 0.0,
+      "metric_benchmark": "python osspr-intake/harness/merge_supervisions/bench.py",
+      "labeled_data": null,
+      "why_hot": "One merge of a 400-turn session allocates 2568 objects, and most of them are not the merged supervision. The custom and alignment key unions call dict.keys() on every turn, which builds a view and an iterator per dict, to rediscover a handful of repeated names. The overlap-warning scan also copies sups[1:] and recomputes SupervisionSegment.end (a freshly rounded float) on both sides of every adjacent pair. The alignment concat itself is already one copy plus extend. Dropping the key views, the neighbor-list copy, and the duplicate end values still returns an equal MonoCut, leaves the input cut unchanged, and keeps the merged word list distinct from each source list.",
+      "overlap_check": "Open upstream PRs do not modify lhotse/cut/mono.py. Nearby open diffs are MultiCut.with_channels (1653), MixedCut.load_custom and trim_to_alignments (1516), and pad() (1020), not merge_supervisions. osspr-intake/lhotse-20261105 already has a runtime card for MonoCut.merge_supervisions; this card is allocations, a different metric_kind."
+    },
+    {
+      "upstream_repo": "https://github.com/lhotse-speech/lhotse",
+      "head_sha": "3a4f0971f4f05c3d012e36b85097ddb5cb235c33",
+      "file": "lhotse/serialization.py",
+      "function": "load_manifest",
+      "native_test_cmd": "python -m pytest -q test/test_serialization.py::test_load_any_lhotse_manifest test/test_serialization.py::test_generic_serialization",
+      "tests_pass_on_baseline": true,
+      "metric_kind": "peak_memory_bytes",
+      "baseline_value": 4329686,
+      "baseline_noise_pct": 0.0,
+      "metric_benchmark": "python osspr-intake/harness/load_manifest/bench.py",
+      "labeled_data": null,
+      "why_hot": "JSONL with no class hint is fully parsed into a list of dicts so RecordingSet, SupervisionSet, FeatureSet, and CutSet can be tried in order. The successful CutSet is constructed while that list is still referenced, so peak traced memory holds every raw dict and every cut at once (4329686 bytes for 1500 cuts). Releasing each dict after its cut is built, or sniffing the type from the first record the way load_manifest_lazy already does, returns an equal manifest and cuts that peak. Type selection and the ValueError paths covered by the native tests have to stay the same.",
+      "overlap_check": "PR 1572 edits load_manifest_lazy_or_eager and stdin loading, not load_manifest. PR 1507 edits get_aistore_client and AIStoreIOBackend.open in the same file. No open PR hunk touches load_manifest. No earlier intake card uses this function."
+    },
+    {
+      "upstream_repo": "https://github.com/lhotse-speech/lhotse",
+      "head_sha": "3a4f0971f4f05c3d012e36b85097ddb5cb235c33",
+      "file": "lhotse/serialization.py",
+      "function": "JsonMixin.to_json",
+      "native_test_cmd": "python -m pytest -q test/test_serialization.py::test_cut_set_serialization test/test_serialization.py::test_generic_serialization",
+      "tests_pass_on_baseline": true,
+      "metric_kind": "allocations",
+      "baseline_value": 428349,
+      "baseline_noise_pct": 0.0,
+      "metric_benchmark": "python osspr-intake/harness/to_json/bench.py",
+      "labeled_data": null,
+      "why_hot": "JsonMixin.to_json materializes list(self.to_dicts()) and then json.dumps it with indent=2. Cut.to_dict calls asdict_nonull, and dataclasses.asdict deep-copies every nested dataclass, list, and dict. On a 1500-cut manifest that is 428349 object allocations per call, while two calls write identical bytes and the in-memory CutSet is left unchanged. Emitting that same document by walking fields, without the deep copy, keeps the file bytes and the cut objects the same.",
+      "overlap_check": "No open upstream PR modifies JsonMixin.to_json or save_to_json. PR 1572 and PR 1507 touch other functions in lhotse/serialization.py (load_manifest_lazy_or_eager, get_aistore_client, AIStoreIOBackend.open). No earlier intake card uses this function or metric_kind."
+    }
+  ]
+}

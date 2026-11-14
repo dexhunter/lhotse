@@ -1,0 +1,63 @@
+[
+  {
+    "upstream_repo": "lhotse-speech/lhotse",
+    "head_sha": "3a4f0971f4f05c3d012e36b85097ddb5cb235c33",
+    "file": "lhotse/shar/writers/tar.py",
+    "function": "TarWriter.write",
+    "native_test_cmd": "python -m pytest -q test/shar/test_write.py::test_tar_writer test/shar/test_write.py::test_tar_writer_with_offset test/shar/test_write.py::test_tar_writer_not_sharded test/shar/test_write.py::test_tar_writer_pipe",
+    "bench_cmd": "python osspr-intake/harness/tar_writer_peak.py",
+    "metric_kind": "peak_memory_bytes",
+    "baseline_value": 30780577,
+    "baseline_noise_pct": 0.0,
+    "metric_benchmark": "python osspr-intake/harness/tar_writer_peak.py",
+    "labeled_data": null,
+    "tests_pass_on_baseline": true,
+    "workload": "Write one 30,720,000-byte member (one minute of 8-channel 16 kHz float32) into an open tar shard, as AudioTarWriter and ArrayTarWriter do.",
+    "notes": "TarWriter.write sizes the member with len(data.getvalue()), which copies the whole buffer, then addfile reads the original BytesIO. seek(0, 2) returns that size without the copy, and the tar bytes stay identical. Traced peak over 5 runs was 30,780,577 bytes every time (noise 0). Overlap: no open PR and no PR merged since 2026-10-15 edits lhotse/shar/writers/tar.py. Recent shar work is index packs and gzip JSONL in other files. dexhunter PRs (#1613, #1636, #1638, #1654, #1655, #1656) do not touch it, nor do the 20261105/20261110/20261112 intake cards. No open issue marks TarWriter deprecated or mid-move."
+  },
+  {
+    "upstream_repo": "lhotse-speech/lhotse",
+    "head_sha": "3a4f0971f4f05c3d012e36b85097ddb5cb235c33",
+    "file": "lhotse/features/io.py",
+    "function": "LilcomChunkyReader.read",
+    "native_test_cmd": "python -m pytest -q test/features/test_chunky_writer.py test/features/test_writer_append.py",
+    "bench_cmd": "python osspr-intake/harness/lilcom_chunky_read_peak.py",
+    "metric_kind": "peak_memory_bytes",
+    "baseline_value": 42938561,
+    "baseline_noise_pct": 0.0,
+    "metric_benchmark": "python osspr-intake/harness/lilcom_chunky_read_peak.py",
+    "labeled_data": null,
+    "tests_pass_on_baseline": true,
+    "workload": "Read a 10-minute 80-dim fbank (60,000 frames, 19,200,000 bytes) stored as 500-frame lilcom chunks in one .lca file.",
+    "notes": "read() decompresses every chunk into a list, then np.concatenate allocates the full matrix while that list is still live, so the traced peak is 42,938,561 bytes for a 19,200,000-byte result (5 runs, noise 0). Filling one preallocated array and dropping each chunk leaves a single buffer; the file bytes and decoded values stay inside lilcom's existing 2**-5 tick. Overlap: no open PR edits this file. Merged #1615 (2026-11-04) only changes get_reader/get_writer error text; LilcomChunkyReader.read is not in that diff. #1624 only reformatted abstract signatures. dexhunter PRs and earlier osspr-intake cards do not use this function. Not deprecated."
+  },
+  {
+    "upstream_repo": "lhotse-speech/lhotse",
+    "head_sha": "3a4f0971f4f05c3d012e36b85097ddb5cb235c33",
+    "file": "lhotse/features/io.py",
+    "function": "ChunkedLilcomHdf5Reader.read",
+    "native_test_cmd": "python -m pytest -q test/features/test_chunky_writer.py",
+    "bench_cmd": "python osspr-intake/harness/lilcom_hdf5_read_peak.py",
+    "metric_kind": "peak_memory_bytes",
+    "baseline_value": 38421396,
+    "baseline_noise_pct": 0.0,
+    "metric_benchmark": "python osspr-intake/harness/lilcom_hdf5_read_peak.py",
+    "labeled_data": null,
+    "tests_pass_on_baseline": true,
+    "workload": "Read the same 10-minute 80-dim fbank from chunked lilcom HDF5 (500-frame chunks).",
+    "notes": "The HDF5 reader builds the same decompressed-chunk list and np.concatenate, so the traced peak is 38,421,396 bytes against a 19,200,000-byte matrix: one extra full copy (5 runs, noise 0). A chunk-at-a-time copy into one array is local to this read() and keeps the decoded values within the same lilcom tick. This is a different reader from LilcomChunkyReader (h5py vlen datasets, not the .lca byte layout). Overlap: same file check as that reader; #1615 and #1624 do not modify ChunkedLilcomHdf5Reader.read. No open PR, dexhunter PR, or earlier intake card targets it."
+  },
+  {
+    "upstream_repo": "lhotse-speech/lhotse",
+    "head_sha": "3a4f0971f4f05c3d012e36b85097ddb5cb235c33",
+    "file": "lhotse/audio/recording_set.py",
+    "function": "RecordingSet.__getitem__",
+    "native_test_cmd": "python -m pytest -q test/cut/test_cut.py::test_make_cuts_from_recordings test/cut/test_cut.py::test_make_cuts_from_recordings_with_deterministic_ids test/audio/test_recording_set.py::test_get_metadata test/audio/test_recording_set.py::test_iteration",
+    "bench_cmd": "python osspr-intake/harness/recording_set_getitem_ms.py",
+    "baseline_median_ms": 643.162,
+    "baseline_noise_pct": 4.622,
+    "tests_pass_on_baseline": true,
+    "workload": "Resolve 48 distinct recording ids at the tail of an eager 450,000-recording set (a combined-corpus manifest).",
+    "notes": "Eager RecordingSet stores a list, and a string id scans it. Each of the 48 calls walks about 450,000 recordings, about 13.4 ms per call. A dict built on first use inside __getitem__ keeps the list, iteration order, and equality, and makes the later calls a dict hit. Seven runs: 651.259, 632.009, 629.279, 643.162, 657.927, 628.204, 644.274 ms; median 643.162 ms; full spread (max-min)/median = 4.622%. Overlap: no open PR and no PR merged since 2026-10-15 edits lhotse/audio/recording_set.py (recording.py did change, for RIR seeding and move-to-memory). dexhunter PRs and earlier intake cards do not target this lookup. Not deprecated."
+  }
+]
